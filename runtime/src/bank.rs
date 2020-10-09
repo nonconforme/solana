@@ -443,6 +443,7 @@ pub(crate) struct BankFieldsToDeserialize {
 // This is separated from BankFieldsToDeserialize to avoid cloning by using refs.
 // So, sync fields with BankFieldsToDeserialize!
 // all members are made public to remain Bank private and to make versioned serializer workable on this
+#[derive(Debug)]
 pub(crate) struct BankFieldsToSerialize<'a> {
     pub(crate) blockhash_queue: &'a RwLock<BlockhashQueue>,
     pub(crate) ancestors: &'a Ancestors,
@@ -475,6 +476,46 @@ pub(crate) struct BankFieldsToSerialize<'a> {
     pub(crate) stakes: &'a RwLock<Stakes>,
     pub(crate) epoch_stakes: &'a HashMap<Epoch, EpochStakes>,
     pub(crate) is_delta: bool,
+}
+
+// Can't derive PartialEq because RwLock doesn't implement PartialEq
+impl PartialEq for Bank {
+    fn eq(&self, other: &Self) -> bool {
+        if ptr::eq(self, other) {
+            return true;
+        }
+        *self.blockhash_queue.read().unwrap() == *other.blockhash_queue.read().unwrap()
+            && self.ancestors == other.ancestors
+            && *self.hash.read().unwrap() == *other.hash.read().unwrap()
+            && self.parent_hash == other.parent_hash
+            && self.parent_slot == other.parent_slot
+            && *self.hard_forks.read().unwrap() == *other.hard_forks.read().unwrap()
+            && self.transaction_count.load(Relaxed) == other.transaction_count.load(Relaxed)
+            && self.tick_height.load(Relaxed) == other.tick_height.load(Relaxed)
+            && self.signature_count.load(Relaxed) == other.signature_count.load(Relaxed)
+            && self.capitalization.load(Relaxed) == other.capitalization.load(Relaxed)
+            && self.max_tick_height == other.max_tick_height
+            && self.hashes_per_tick == other.hashes_per_tick
+            && self.ticks_per_slot == other.ticks_per_slot
+            && self.ns_per_slot == other.ns_per_slot
+            && self.genesis_creation_time == other.genesis_creation_time
+            && self.slots_per_year == other.slots_per_year
+            && self.unused == other.unused
+            && self.slot == other.slot
+            && self.epoch == other.epoch
+            && self.block_height == other.block_height
+            && self.collector_id == other.collector_id
+            && self.collector_fees.load(Relaxed) == other.collector_fees.load(Relaxed)
+            && self.fee_calculator == other.fee_calculator
+            && self.fee_rate_governor == other.fee_rate_governor
+            && self.collected_rent.load(Relaxed) == other.collected_rent.load(Relaxed)
+            && self.rent_collector == other.rent_collector
+            && self.epoch_schedule == other.epoch_schedule
+            && *self.inflation.read().unwrap() == *other.inflation.read().unwrap()
+            && *self.stakes.read().unwrap() == *other.stakes.read().unwrap()
+            && self.epoch_stakes == other.epoch_stakes
+            && self.is_delta.load(Relaxed) == other.is_delta.load(Relaxed)
+    }
 }
 
 #[derive(Debug, PartialEq, Serialize, Deserialize, AbiExample, Default, Clone, Copy)]
@@ -878,7 +919,11 @@ impl Bank {
         );
         assert_eq!(bank.epoch_schedule, genesis_config.epoch_schedule);
         assert_eq!(bank.epoch, bank.epoch_schedule.get_epoch(bank.slot));
-
+        bank.fee_rate_governor.lamports_per_signature = bank.fee_calculator.lamports_per_signature;
+        assert_eq!(
+            bank.fee_rate_governor.create_fee_calculator(),
+            bank.fee_calculator
+        );
         bank
     }
 
@@ -3579,6 +3624,7 @@ impl Bank {
         }
     }
 
+<<<<<<< HEAD
     pub fn compare_bank(&self, dbank: &Bank) {
         if ptr::eq(self, dbank) {
             return;
@@ -3630,6 +3676,19 @@ impl Bank {
 
     pub fn process_dead_slots(&self) {
         self.rc.accounts.accounts_db.process_dead_slots(None);
+=======
+    pub fn clean_accounts(&self, skip_last: bool) {
+        let max_clean_slot = if skip_last {
+            // Don't clean the slot we're snapshotting because it may have zero-lamport
+            // accounts that were included in the bank delta hash when the bank was frozen,
+            // and if we clean them here, any newly created snapshot's hash for this bank
+            // may not match the frozen hash.
+            Some(self.slot() - 1)
+        } else {
+            None
+        };
+        self.rc.accounts.accounts_db.clean_accounts(max_clean_slot);
+>>>>>>> c879e7c1a... Fix fee mismatch on snapshot deserialize (#12697)
     }
 
     pub fn shrink_all_slots(&self) {
